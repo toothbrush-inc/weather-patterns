@@ -1,0 +1,54 @@
+# Run the whole thing — dashboard + scheduled collection — with one command:
+#   docker compose up -d --build
+# Then open http://localhost:3002 and add your locations / PurpleAir key in the UI.
+services:
+  weather-patterns:
+    build: .
+    ports:
+      - "3002:3002"
+    volumes:
+      # Persists history.json, settings.json, forecasts.json across restarts.
+      - weather-data:/data
+    environment:
+      # How often to collect, in minutes. Set to 0 to disable the built-in scheduler
+      # (e.g. if you drive collection from an external cron instead).
+      COLLECT_INTERVAL_MINUTES: "30"
+
+      # Require a password when this instance is reachable from the public internet
+      # (a tunnel/Funnel, an open port). Leave unset for private access (Tailscale,
+      # Cloudflare Access, LAN) — auth is then a no-op. Username is ignored. The
+      # value comes from the gitignored .env file so the secret stays out of git.
+      SITE_PASSWORD: "${SITE_PASSWORD:-}"
+
+      # Optional: PurpleAir read key (can also be set in the UI under ⚙ Keys).
+      # PURPLEAIR_READ_KEY: ""
+
+      # Optional: seed the first location on a fresh install (edit later in the UI).
+      # LOCATION_NAME: "San Francisco, CA"
+      # LOCATION_LAT: "37.7749"
+      # LOCATION_LON: "-122.4194"
+    restart: unless-stopped
+
+  # Optional: expose this instance on a free public URL via a Cloudflare quick
+  # tunnel — no account, no domain, no open ports. Opt in with a compose profile:
+  #
+  #   docker compose --profile tunnel up -d --build
+  #   docker compose logs cloudflared        # find your https://<random>.trycloudflare.com URL
+  #
+  # The URL is RANDOM and CHANGES on restart (that's the price of zero setup). For
+  # a STABLE free URL, use Tailscale Funnel or a Cloudflare named tunnel instead —
+  # see the README "A free public URL" section.
+  #
+  # ⚠️  A public URL means anyone can reach this. Set SITE_PASSWORD on the
+  #     weather-patterns service above BEFORE starting the tunnel, or strangers and
+  #     bots can rewrite your keys and locations.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunnel"]
+    command: tunnel --no-autoupdate --url http://weather-patterns:3002
+    depends_on:
+      - weather-patterns
+    restart: unless-stopped
+
+volumes:
+  weather-data:

@@ -1,0 +1,22 @@
+node_modules
+.next
+out
+.git
+.gitignore
+# Never bake local data or secrets into the image — these live on the /data volume.
+.env.local
+settings.json
+history.json
+forecasts.json
+*.db
+*.db-journal
+# Dev-only odds and ends.
+.claude
+memory
+com.weather.patterns.plist
+*.log
+.DS_Store
+tsconfig.tsbuildinfo
+Dockerfile
+.dockerignore
+README.md

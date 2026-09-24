@@ -1,0 +1,32 @@
+# One-click deploy to Render (a "Blueprint"). Render builds the Dockerfile, attaches
+# a persistent disk for the JSON data, and runs the dashboard + built-in scheduler.
+#
+# Note the `starter` plan, not `free`: a free service sleeps after 15 min of
+# inactivity (so the scheduler never runs) and can't have a persistent disk. Starter
+# is ~$7/mo and stays awake. See the README "Deploy for remote access" section.
+services:
+  - type: web
+    name: weather-patterns
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    autoDeploy: false
+    envVars:
+      - key: COLLECT_INTERVAL_MINUTES
+        value: "30"
+      # Render gives every web service a public URL, so set a password. `sync: false`
+      # prompts you to enter one at deploy time; leave it blank to disable auth.
+      - key: SITE_PASSWORD
+        sync: false
+      - key: WEATHER_DB
+        value: /data/history.json
+      - key: WEATHER_SETTINGS
+        value: /data/settings.json
+      - key: WEATHER_FORECASTS
+        value: /data/forecasts.json
+      - key: WEATHER_GAPS
+        value: /data/gaps.json
+    disk:
+      name: weather-data
+      mountPath: /data
+      sizeGB: 1

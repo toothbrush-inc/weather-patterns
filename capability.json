@@ -1,0 +1,80 @@
+{
+  "id": "weather",
+  "store": {
+    "name": "Weather Patterns",
+    "tagline": "Personalized weather service. Get accurate, hyperlocal forecasts for your location.",
+    "description": "A forecast that learns your microclimate: every source is scored against actuals, giving you a more accurate picture.",
+    "highlights": [
+      "Don't get fooled by a single forecast, get the full picture in one place",
+      "Easily compare weather data and forecasts to see how the weather is actually trending",
+      "Get a heads up when the weather is out of the ordinary"
+    ],
+    "accent": "sky",
+    "web": {
+      "path": "/weather"
+    },
+    "repo": "https://github.com/toothbrush-inc/weather-patterns"
+  },
+  "connections": [
+    {
+      "provider": "purpleair",
+      "slot": "default",
+      "optional": true,
+      "actions": [
+        "read"
+      ],
+      "egress": {
+        "hosts": [
+          "api.purpleair.com"
+        ],
+        "attach": {
+          "kind": "header",
+          "name": "X-API-Key"
+        }
+      }
+    },
+    {
+      "provider": "open_meteo",
+      "slot": "default",
+      "optional": true,
+      "actions": [
+        "read"
+      ],
+      "egress": {
+        "hosts": [
+          "api.open-meteo.com",
+          "air-quality-api.open-meteo.com",
+          "archive-api.open-meteo.com"
+        ],
+        "attach": {
+          "kind": "query",
+          "name": "apikey"
+        },
+        "hostRewrite": {
+          "api.open-meteo.com": "customer-api.open-meteo.com",
+          "air-quality-api.open-meteo.com": "customer-air-quality-api.open-meteo.com",
+          "archive-api.open-meteo.com": "customer-archive-api.open-meteo.com"
+        }
+      }
+    },
+    {
+      "provider": "profile",
+      "slot": "default",
+      "optional": true,
+      "actions": [
+        "home_lat",
+        "home_lon"
+      ]
+    }
+  ],
+  "tools": {
+    "query": [
+      "get_forecast",
+      "get_current",
+      "query_history",
+      "compare_sources",
+      "forecast_accuracy",
+      "get_status"
+    ]
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "name": "weather-patterns",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Personalized weather service: accurate, hyperlocal forecasts from the NWS, Open-Meteo and PurpleAir that learn your microclimate.",
+  "scripts": {
+    "dev": "next dev -p 3002",
+    "build": "next build",
+    "start": "next start -p ${PORT:-3002}",
+    "lint": "next lint",
+    "collect": "node --env-file-if-exists=.env.local scripts/collect.mjs",
+    "mcp": "node mcp/server.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@dvd-toy-box/vault": "^0.12.2",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "next": "^16.2.9",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "recharts": "^2.15.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "typescript": "^5.7.3",
+    "vitest": "^3.2.4"
+  }
+}
