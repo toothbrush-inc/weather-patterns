@@ -152,8 +152,8 @@ export default function TodayChart({ history, hourly, tomorrow, date, utcOffsetS
     <div className="tc-tip-extras">{r.latest ? "Forecast interpolated to this minute" : r.day === 1 ? "Hourly detail" : `${r.samples}/3 hourly values available in this interval`}</div>
   </>;
   return <section className="today-chart" aria-label="Three-day temperature comparison">
-    {hasData ? <ResponsiveContainer width="100%" height={310}>
-      <ComposedChart accessibilityLayer data={rows} margin={{ top: 24, right: 0, left: 0, bottom: 8 }}>
+    {hasData ? <ResponsiveContainer width="100%" height={278}>
+      <ComposedChart accessibilityLayer data={rows} margin={{ top: 4, right: 0, left: 0, bottom: 8 }}>
         <ReferenceArea x1={12} x2={60} fill={colors.actual} fillOpacity={0.045} />
         {/* The current reading's band, shaded across today only, so the label and the plot agree on where "now" sits. */}
         {currentBand && <ReferenceArea x1={12} x2={60} y1={Math.max(currentBand.floor, yDomain[0])} y2={Math.min(currentBand.ceiling, yDomain[1])} fill="#e6edf3" fillOpacity={0.07} ifOverflow="hidden" />}
@@ -161,7 +161,7 @@ export default function TodayChart({ history, hourly, tomorrow, date, utcOffsetS
         <ReferenceLine x={60} stroke="#536171" />
         <CartesianGrid vertical={false} stroke="#2d3742" strokeDasharray="3 5" />
         <XAxis dataKey="x" type="number" domain={[0, 72]} ticks={[6, 12, 24, 36, 48, 60, 66]} tickFormatter={v => hourLabel(v < 12 ? v * 2 : v < 60 ? (v - 12) / 2 : (v - 60) * 2)} tick={{ fill: "#94a3b8", fontSize: 11 }} minTickGap={16} />
-        <XAxis xAxisId="days" dataKey="x" type="number" domain={[0, 72]} ticks={[6, 36, 66]} orientation="top" axisLine={false} tickLine={false} tickFormatter={v => daily[v < 12 ? 0 : v < 60 ? 1 : 2].label} tick={{ fill: "#cbd5e1", fontSize: 10 }} />
+        <XAxis xAxisId="days" dataKey="x" type="number" domain={[0, 72]} ticks={[6, 36, 66]} orientation="top" height={18} axisLine={false} tickLine={false} tickFormatter={v => daily[v < 12 ? 0 : v < 60 ? 1 : 2].label} tick={{ fill: "#cbd5e1", fontSize: 10 }} />
         <YAxis width={44} domain={yDomain} ticks={temperatureTicks(yDomain)} allowDataOverflow includeHidden tickFormatter={v => `${Math.round(v)}°`} tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={false} tickLine={false} />
         <YAxis yAxisId="bands" orientation="right" width={62} domain={yDomain} ticks={scale.map(b => b.mid)} interval={0} allowDataOverflow tick={bandTick} tickMargin={2} axisLine={false} tickLine={false} />
         <Tooltip content={({ active, label }) => active && rows.find(r => r.x === Number(label)) ? <div className="acc-tip">{readout(rows.find(r => r.x === Number(label))!)}</div> : null} />
