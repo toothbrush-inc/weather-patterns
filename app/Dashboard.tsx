@@ -1,15 +1,15 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import HistoryCharts from "./HistoryCharts";
 import AccuracyCharts from "./AccuracyCharts";
 import { fitCurve, adjustedDailyRange, breachAt, comparableBounds, consensusBiasFor, forecastCurve, nowVsExpected, NOWCHECK_TOL, type ObsFrame } from "../lib/forecast-adjustment";
 import TodayChart from "./TodayChart";
+import { Icon, type IconName } from "./icons";
 import { WeatherClock, useWeatherNow } from "./WeatherClock";
 import {
   NearbySensorPicker,
   PlaceSearch,
-  PurpleAirKeyField,
   SetupCard,
   clearForceSetupQuery,
   readForceSetup,
@@ -293,11 +293,6 @@ function distClass(d: number | null | undefined): string {
   return d <= AREA_NEAR_MI ? "lo" : d <= AREA_FAR_MI ? "mid" : "hi";
 }
 
-function pillLabel(source: string, on: boolean, keys: Payload["keys"]): string {
-  if (on) return "on";
-  if (source === "purpleair") return keys.purpleair ? "no sensor here" : "no key";
-  return "off";
-}
 
 export type ScenarioData = { nowMs: number; data: Payload; forecast: ForecastPayload | null; accuracy: AccuracyPayload | null; overviewOnly?: boolean };
 
@@ -309,8 +304,7 @@ function DashboardContent({ scenario }: { scenario?: ScenarioData }) {
   const [wire, setData] = useState<PayloadWire | null>(scenario?.data ?? null);
   const [loading, setLoading] = useState(true);
   const [collecting, setCollecting] = useState(false);
-  const [panel, setPanel] = useState<"locations" | "keys" | null>(null);
-  const [showSettings, setShowSettings] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [selectedLoc, setSelectedLoc] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [forecast, setForecast] = useState<ForecastPayload | null>(scenario?.forecast ?? null);
@@ -383,6 +377,12 @@ function DashboardContent({ scenario }: { scenario?: ScenarioData }) {
     if (scenario) return;
     setSetupSkipped(readSetupSkipped());
     setForceSetup(readForceSetup());
+    setSettingsOpen(readSettingsQuery());
+  }, []);
+
+  const closeSettings = useCallback(() => {
+    setSettingsOpen(false);
+    clearSettingsQuery();
   }, []);
 
   const reload = useCallback(() => load(selectedLoc), [load, selectedLoc]);
@@ -427,33 +427,33 @@ function DashboardContent({ scenario }: { scenario?: ScenarioData }) {
 
   if (!wire.location) {
     // Signed in and following nothing yet: the setup card is the whole page.
-    // "Not now" opens the Locations panel instead, which handles an empty list.
+    // "Not now" opens Settings instead, whose location list handles being empty.
     return (
       <>
         <div className="topbar">
           <h1>Weather Patterns</h1>
         </div>
-        {panel === "locations" ? (
-          <LocationsPanel
-            data={wire as Payload}
-            onClose={() => setPanel(null)}
-            onChanged={reload}
-            onSelect={selectLocation}
-          />
-        ) : (
-          <SetupCard
-            locationId=""
-            mode="add"
-            hasPurpleairKey={wire.keys.purpleair}
-            onDone={async (id) => {
-              setSetupDone(true);
-              setSelectedLoc(id);
-              rememberLoc(id);
-              await Promise.all([load(id), loadForecast(id), loadAccuracy(id)]);
-            }}
-            onSkip={() => setPanel("locations")}
-          />
-        )}
+        <SetupCard
+          locationId=""
+          mode="add"
+          hasPurpleairKey={wire.keys.purpleair}
+          onDone={async (id) => {
+            setSetupDone(true);
+            setSelectedLoc(id);
+            rememberLoc(id);
+            await Promise.all([load(id), loadForecast(id), loadAccuracy(id)]);
+          }}
+          onSkip={() => setSettingsOpen(true)}
+        />
+        <SettingsSheet
+          open={settingsOpen}
+          onClose={closeSettings}
+          data={wire}
+          onChanged={reload}
+          onSelect={selectLocation}
+          collecting={collecting}
+          onCollect={collectNow}
+        />
       </>
     );
   }
@@ -468,72 +468,40 @@ function DashboardContent({ scenario }: { scenario?: ScenarioData }) {
 
   return (
     <>
-      <div className="topbar">
-        <h1>Weather Patterns</h1>
-        <select
-          className="loc-select header-location"
-          aria-label="Weather location"
-          disabled={!!scenario}
-          value={selectedLoc ?? data.location.id}
-          onChange={(e) => selectLocation(e.target.value)}
-        >
-          {data.locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-        </select>
-        {!scenario && <button
-          className={`btn secondary${showSettings ? " active" : ""}`}
-          onClick={() => setShowSettings((s) => !s)}
-          aria-expanded={showSettings}
-        >
-          ⚙ Settings
-        </button>}
+      <div className="topbar place-bar">
+        <LocationHeading
+          current={data.location}
+          locations={data.locations}
+          onSelect={selectLocation}
+          onManage={scenario ? undefined : () => setSettingsOpen(true)}
+        />
+        <div className="topbar-end">
+          <span className="app-name">Weather Patterns</span>
+          {!scenario && (
+            <button
+              className="icon-btn settings-btn"
+              onClick={() => setSettingsOpen(true)}
+              aria-haspopup="dialog"
+              aria-label="Settings"
+              title="Settings"
+            >
+              <Icon name="gear" size={20} />
+            </button>
+          )}
+        </div>
       </div>
 
-      {showSettings && (
-        <div className="settings-bar panel">
-          <div className="sb-row">
-            <div className="actions">
-              <button
-                className={`btn secondary${panel === "locations" ? " active" : ""}`}
-                onClick={() => setPanel((p) => (p === "locations" ? null : "locations"))}
-              >
-                📍 Locations
-              </button>
-              <button
-                className={`btn secondary${panel === "keys" ? " active" : ""}`}
-                onClick={() => setPanel((p) => (p === "keys" ? null : "keys"))}
-              >
-                ⚙ Keys
-              </button>
-              <button className="btn" onClick={collectNow} disabled={collecting}>
-                {collecting ? "Fetching…" : "↻ Collect now"}
-              </button>
-            </div>
-          </div>
-          <div className="sb-meta">
-            {data.location.lat}, {data.location.lon} · {data.totalReadings} readings logged
-            {data.history.length > 0 && (
-              <> · latest {new Date(data.history[data.history.length - 1].ts).toLocaleString()}</>
-            )}
-          </div>
-          <div className="statusrow">
-            {Object.entries(data.sourceStatus).map(([s, on]) => (
-              <span key={s} className={`pill ${on ? "on" : "off"}`}>
-                {sourceLabels[s] || s}: {pillLabel(s, on, data.keys)}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {panel === "locations" && (
-        <LocationsPanel
+      {!scenario && (
+        <SettingsSheet
+          open={settingsOpen}
+          onClose={closeSettings}
           data={data}
-          onClose={() => setPanel(null)}
           onChanged={reload}
           onSelect={selectLocation}
+          collecting={collecting}
+          onCollect={collectNow}
         />
       )}
-      {panel === "keys" && <KeysPanel onClose={() => setPanel(null)} onSaved={reload} />}
 
       {showSetup ? (
         <SetupCard
@@ -552,7 +520,7 @@ function DashboardContent({ scenario }: { scenario?: ScenarioData }) {
         />
       ) : (
         <>
-          {!hasAnyData && <p className="note">No observations yet. You can still browse the forecast; use Settings → Collect now to start recording local conditions.</p>}
+          {!hasAnyData && <p className="note">No observations yet. You can still browse the forecast; open Settings and choose Collect now to start recording local conditions.</p>}
           {farSources.length > 0 && (
             <div className="panel warn-banner" style={{ marginTop: 20 }}>
               <strong>⚠ A source is far from {data.location.name}</strong> ({data.location.lat},{" "}
@@ -564,7 +532,7 @@ function DashboardContent({ scenario }: { scenario?: ScenarioData }) {
                   {row.place ? ` (${row.place})` : ""}
                 </span>
               ))}
-              . Pick a closer device for this location under <em>📍 Locations</em>, or treat the gap as a
+              . Pick a closer device for this location in <em>Settings</em>, or treat the gap as a
               cross-area comparison.
             </div>
           )}
@@ -1603,21 +1571,21 @@ type LocFields = {
 function LocationForm({
   initial,
   submitLabel,
+  submitIcon = "check",
   onSubmit,
   keys,
   sourceLabels,
   busy,
   onCancel,
-  onKeySaved,
 }: {
   initial?: Partial<LocationCfg>;
   submitLabel: string;
+  submitIcon?: IconName;
   onSubmit: (f: LocFields) => void;
   keys: Payload["keys"];
   sourceLabels: Record<string, string>;
   busy: boolean;
   onCancel?: () => void;
-  onKeySaved?: () => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [lat, setLat] = useState(initial?.lat != null ? String(initial.lat) : "");
@@ -1691,7 +1659,10 @@ function LocationForm({
           PurpleAir sensor {keys.purpleair ? "(optional)" : ""}
         </label>
         {!keys.purpleair ? (
-          <PurpleAirKeyField onSaved={() => onKeySaved?.()} disabled={busy} />
+          <div className="note" style={{ marginTop: 0 }}>
+            Picking a sensor needs a PurpleAir key.{" "}
+            <button type="button" className="linkbtn" onClick={focusPurpleAirKey}>Add key</button>
+          </div>
         ) : !canSubmit ? (
           <div className="note" style={{ marginTop: 0 }}>Set coordinates to list nearby outdoor sensors.</div>
         ) : (
@@ -1731,13 +1702,22 @@ function LocationForm({
           disabled={busy || !canSubmit}
           onClick={() => onSubmit({ name, lat, lon, purpleair_sensor_index: pa })}
         >
+          <Icon name={submitIcon} />
           {busy ? "Saving…" : submitLabel}
         </button>
-        <button className="btn secondary" disabled={!canSubmit || checking} onClick={checkDistances}>
-          {checking ? "Checking…" : "📏 Check station distances"}
+        <button
+          className="btn secondary"
+          disabled={!canSubmit || checking}
+          onClick={checkDistances}
+          title="Check how far each source's station is from this point"
+        >
+          <Icon name="ruler" />
+          {checking ? "Checking…" : "Distances"}
         </button>
         {onCancel && (
-          <button className="btn secondary" onClick={onCancel} disabled={busy}>Cancel</button>
+          <button className="icon-btn" onClick={onCancel} disabled={busy} aria-label="Cancel" title="Cancel">
+            <Icon name="x" />
+          </button>
         )}
       </div>
 
@@ -1780,24 +1760,245 @@ function LocationForm({
   );
 }
 
-function LocationsPanel({
-  data,
+// ------------------------------------------------------- Location header ----
+
+// "Sky Hy Circle, Lafayette, California, US" reads as a headline plus a
+// locality line; a name without a comma is all headline.
+function splitPlaceName(name: string): [string, string | null] {
+  const i = name.indexOf(",");
+  if (i < 0) return [name, null];
+  return [name.slice(0, i).trim(), name.slice(i + 1).trim() || null];
+}
+
+// The viewed location is the page's heading. With somewhere to switch to (or
+// Settings to manage the list), the heading is also the switcher: it opens a
+// short list of locations rather than a native <select>, which can't be styled
+// as a heading. Without onManage (the scenario gallery) it's plain text.
+function LocationHeading({
+  current,
+  locations,
+  onSelect,
+  onManage,
+}: {
+  current: LocationCfg;
+  locations: LocationCfg[];
+  onSelect: (id: string) => void;
+  onManage?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrap = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const [title, locality] = splitPlaceName(current.name);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (!wrap.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setOpen(false);
+      trigger.current?.focus();
+    };
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  // The chevron sits inside the title so it follows the last word when a long
+  // name wraps, instead of hanging off in a column of its own.
+  const heading = (chevron?: ReactNode) => (
+    <>
+      <span className="place-title">{title}{chevron}</span>
+      {locality && <span className="place-locality">{locality}</span>}
+    </>
+  );
+
+  if (!onManage) return <h1 className="place-heading">{heading()}</h1>;
+
+  return (
+    <div className="place-switcher" ref={wrap}>
+      <h1 className="place-heading">
+        <button
+          ref={trigger}
+          className="place-trigger"
+          aria-expanded={open}
+          aria-controls="place-menu"
+          onClick={() => setOpen((o) => !o)}
+        >
+          {heading(
+            <span className="place-chevron" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+            </span>,
+          )}
+          <span className="sr-only">, switch location</span>
+        </button>
+      </h1>
+      {open && (
+        <div className="place-menu" id="place-menu">
+          <ul>
+            {locations.map((l) => {
+              const [t, loc] = splitPlaceName(l.name);
+              const here = l.id === current.id;
+              return (
+                <li key={l.id}>
+                  <button
+                    className={`place-option${here ? " current" : ""}`}
+                    aria-current={here ? "true" : undefined}
+                    onClick={() => { setOpen(false); if (!here) onSelect(l.id); }}
+                  >
+                    <span className="place-option-text">
+                      <span className="place-option-title">{t}</span>
+                      {loc && <span className="place-option-locality">{loc}</span>}
+                    </span>
+                    {here && <Icon name="check" />}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          <button className="place-manage" onClick={() => { setOpen(false); onManage(); }}>
+            <Icon name="pencil" size={14} />
+            Manage locations
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------- Settings ------
+
+// ?settings in the URL opens the sheet on load, so a link (or a screenshot
+// harness) can land straight in it. Closing drops the param so a reload
+// doesn't reopen it.
+function readSettingsQuery(): boolean {
+  try {
+    return new URLSearchParams(window.location.search).has("settings");
+  } catch {
+    return false;
+  }
+}
+function clearSettingsQuery() {
+  try {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("settings")) return;
+    url.searchParams.delete("settings");
+    window.history.replaceState(null, "", url);
+  } catch {
+    /* not in a browser */
+  }
+}
+
+// Everything the user can change lives in one modal sheet: a drawer on the
+// right on wide screens, full screen on a phone. It replaces the old toggle
+// bar whose Locations / Keys buttons each opened a second, separately
+// closeable panel. Native <dialog> gives Esc-to-close, the focus trap and
+// focus return for free.
+function SettingsSheet({
+  open,
   onClose,
+  data,
+  onChanged,
+  onSelect,
+  collecting,
+  onCollect,
+}: {
+  open: boolean;
+  onClose: () => void;
+  data: PayloadWire;
+  onChanged: () => void;
+  onSelect: (id: string) => void;
+  collecting: boolean;
+  onCollect: () => void;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const d = ref.current;
+    if (!d) return;
+    if (open && !d.open) d.showModal();
+    if (!open && d.open) d.close();
+  }, [open]);
+
+  const latestTs = data.history.length > 0 ? data.history[data.history.length - 1].ts : null;
+
+  return (
+    <dialog
+      ref={ref}
+      className="sheet"
+      aria-labelledby="settings-title"
+      onClose={onClose}
+      // A click that lands on the <dialog> itself (not its content) is the backdrop.
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      {open && (
+        <div className="sheet-inner">
+          <header className="sheet-head">
+            <h2 id="settings-title">Settings</h2>
+            <button className="icon-btn sheet-done" onClick={onClose} aria-label="Done" title="Done">
+              <Icon name="check" size={20} />
+            </button>
+          </header>
+
+          <div className="sheet-body">
+            <section className="sheet-section" aria-labelledby="set-locations">
+              <h3 id="set-locations">Locations</h3>
+              <LocationsSection
+                data={data}
+                onChanged={onChanged}
+                onSelect={(id) => { onClose(); onSelect(id); }}
+              />
+            </section>
+
+            <section className="sheet-section" aria-labelledby="set-sources">
+              <h3 id="set-sources">Data sources</h3>
+              <SourcesSection data={data} onChanged={onChanged} />
+            </section>
+
+            {data.location && (
+              <section className="sheet-section" aria-labelledby="set-collection">
+                <h3 id="set-collection">Collection</h3>
+                <p className="sheet-lead">
+                  {data.totalReadings.toLocaleString()} readings logged for {data.location.name}
+                  {latestTs && <>, the latest at {new Date(latestTs).toLocaleString()}</>}.
+                  Collect now takes a snapshot from every source straight away instead of waiting
+                  for the schedule.
+                </p>
+                <button className="btn" onClick={onCollect} disabled={collecting}>
+                  <Icon name="refresh" />
+                  {collecting ? "Collecting…" : "Collect now"}
+                </button>
+              </section>
+            )}
+          </div>
+        </div>
+      )}
+    </dialog>
+  );
+}
+
+function LocationsSection({
+  data,
   onChanged,
   onSelect,
 }: {
-  data: Payload;
-  onClose: () => void;
+  data: PayloadWire;
   onChanged: () => void;
   onSelect: (id: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<string | null>(null);
   const [adding, setAdding] = useState(data.locations.length === 0);
   const [err, setErr] = useState<string | null>(null);
   // A shared instance keeps at least one location (the collector needs a target);
   // a signed-in user may unfollow their last one and go back to the setup card.
   const lastShared = data.locations.length <= 1 && !data.caller;
+  const currentId = data.location?.id;
 
   const post = useCallback(
     async (body: any) => {
@@ -1823,80 +2024,109 @@ function LocationsPanel({
     [onChanged],
   );
 
+  const startEdit = (id: string | null) => {
+    setEditing(id);
+    setConfirming(null);
+    setAdding(false);
+  };
+
   return (
-    <div className="panel settings">
-      <div className="settings-head">
-        <strong>Locations</strong>
-        <button className="btn secondary" onClick={onClose}>Close</button>
-      </div>
-      <p className="note" style={{ marginTop: 4 }}>
-        Each location is tracked independently in history. NWS and Open-Meteo follow its coordinates
-        automatically (closest station / grid cell); PurpleAir uses the sensor you pick here.
-        {data.caller && (
-          <> Only you see this list. A place someone else also tracks is collected once and shared;
-          moving one they follow gives you your own copy instead.</>
-        )}
+    <>
+      <p className="sheet-lead">
+        NWS and Open-Meteo use the closest station to each location. PurpleAir uses the sensor you pick.
+        {data.caller && <> Only you see this list.</>}
       </p>
 
-      <div className="loc-list">
-        {data.locations.map((l) => (
-          <div key={l.id} className={`loc-item${l.id === data.location?.id ? " current" : ""}`}>
-            {editing === l.id ? (
-              <LocationForm
-                initial={l}
-                submitLabel="Save changes"
-                keys={data.keys}
-                sourceLabels={data.sourceLabels}
-                busy={busy}
-                onCancel={() => setEditing(null)}
-                onKeySaved={onChanged}
-                onSubmit={async (f) => {
-                  const ok = await post({ action: "update", id: l.id, ...f });
-                  if (ok) setEditing(null);
-                }}
-              />
-            ) : (
-              <div className="loc-row">
-                <div className="loc-meta">
-                  <div className="loc-title">
-                    {l.name}
-                    {l.id === data.location?.id && <span className="badge">viewing</span>}
+      {data.locations.length > 0 && (
+        <ul className="loc-list">
+          {data.locations.map((l) => {
+            const current = l.id === currentId;
+            return (
+              <li key={l.id} className={`loc-item${current ? " current" : ""}`}>
+                {editing === l.id ? (
+                  <>
+                  <div className="fg-title" style={{ marginBottom: 8 }}>Edit {l.name}</div>
+                  <LocationForm
+                    initial={l}
+                    submitLabel="Save"
+                    keys={data.keys}
+                    sourceLabels={data.sourceLabels}
+                    busy={busy}
+                    onCancel={() => setEditing(null)}
+                    onSubmit={async (f) => {
+                      const ok = await post({ action: "update", id: l.id, ...f });
+                      if (ok) setEditing(null);
+                    }}
+                  />
+                  </>
+                ) : confirming === l.id ? (
+                  <div className="loc-confirm" role="group" aria-label={`Remove ${l.name}`}>
+                    <span>Remove {l.name}?</span>
+                    <div className="loc-btns">
+                      <button
+                        className="btn danger"
+                        disabled={busy}
+                        onClick={async () => {
+                          if (await post({ action: "remove", id: l.id })) setConfirming(null);
+                        }}
+                      >
+                        <Icon name="trash" />
+                        {busy ? "Removing…" : "Remove"}
+                      </button>
+                      <button className="btn secondary" disabled={busy} onClick={() => setConfirming(null)}>Keep</button>
+                    </div>
                   </div>
-                  <div className="muted">
-                    {l.lat}, {l.lon}
-                    {l.purpleair_sensor_index ? ` · PA #${l.purpleair_sensor_index}` : ""}
+                ) : (
+                  <div className="loc-row">
+                    <div className="loc-meta">
+                      <div className="loc-title">
+                        {l.name}
+                        {current && <span className="badge">Viewing</span>}
+                      </div>
+                      <div className="muted">
+                        {l.lat}, {l.lon}
+                        {l.purpleair_sensor_index ? `, PurpleAir sensor ${l.purpleair_sensor_index}` : ""}
+                      </div>
+                    </div>
+                    <div className="loc-btns">
+                      {!current && (
+                        <button className="icon-btn" disabled={busy} onClick={() => onSelect(l.id)} aria-label={`View ${l.name}`} title="View">
+                          <Icon name="eye" />
+                        </button>
+                      )}
+                      <button className="icon-btn" disabled={busy} onClick={() => startEdit(l.id)} aria-label={`Edit ${l.name}`} title="Edit">
+                        <Icon name="pencil" />
+                      </button>
+                      {!lastShared && (
+                        <button
+                          className="icon-btn"
+                          disabled={busy}
+                          onClick={() => { setConfirming(l.id); setEditing(null); }}
+                          aria-label={`Remove ${l.name}`}
+                          title="Remove"
+                        >
+                          <Icon name="trash" />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-                <div className="loc-btns">
-                  {l.id !== data.location.id && (
-                    <button className="btn secondary" disabled={busy} onClick={() => onSelect(l.id)}>View</button>
-                  )}
-                  <button className="btn secondary" disabled={busy} onClick={() => { setEditing(l.id); setAdding(false); }}>Edit</button>
-                  <button
-                    className="btn secondary"
-                    disabled={busy || lastShared}
-                    title={lastShared ? "keep at least one location" : "remove"}
-                    onClick={() => post({ action: "remove", id: l.id })}
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
 
       {adding ? (
         <div className="loc-add">
           <div className="fg-title" style={{ marginBottom: 8 }}>Add a location</div>
           <LocationForm
-            submitLabel="Add location"
+            submitLabel="Add"
+            submitIcon="plus"
             keys={data.keys}
             sourceLabels={data.sourceLabels}
             busy={busy}
             onCancel={data.locations.length > 0 ? () => setAdding(false) : undefined}
-            onKeySaved={onChanged}
             onSubmit={async (f) => {
               const ok = await post({ action: "add", ...f });
               if (ok) setAdding(false);
@@ -1904,17 +2134,16 @@ function LocationsPanel({
           />
         </div>
       ) : (
-        <button className="btn secondary" style={{ marginTop: 14 }} onClick={() => { setAdding(true); setEditing(null); }}>
-          + Add location
+        <button className="btn secondary add-btn" onClick={() => { setAdding(true); setEditing(null); setConfirming(null); }}>
+          <Icon name="plus" />
+          Add location
         </button>
       )}
 
-      {err && <div className="err-msg" style={{ marginTop: 12 }}>{err}</div>}
-    </div>
+      {err && <div className="err-msg" role="alert" style={{ marginTop: 12 }}>{err}</div>}
+    </>
   );
 }
-
-// -------------------------------------------------------------- Keys ------
 
 type Origin = "vault" | "saved" | "env" | "none";
 type KeyView = { set: boolean; masked: string; origin: Origin };
@@ -1923,141 +2152,233 @@ type KeysView = {
   open_meteo?: { api_key: KeyView };
 };
 
-function keyHint(k: KeyView): string {
-  if (k.origin === "vault") return `in local vault (${k.masked}) — leave blank to keep`;
-  if (k.origin === "env") return `from .env.local (${k.masked}) — saving here overrides it`;
-  if (k.origin === "saved") return `saved ${k.masked} — leave blank to keep`;
-  return "paste key";
+const NO_KEY: KeyView = { set: false, masked: "", origin: "none" };
+const PA_KEY_INPUT = "purpleair-read-key";
+
+// The location form's "Add a key" jumps down to the PurpleAir row in the
+// same sheet rather than growing a second key field of its own.
+function focusPurpleAirKey() {
+  const el = document.getElementById(PA_KEY_INPUT);
+  el?.scrollIntoView({ block: "center", behavior: "smooth" });
+  el?.focus({ preventScroll: true });
 }
 
-function KeysPanel({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [view, setView] = useState<KeysView | null>(null);
-  const [paKey, setPaKey] = useState("");
-  const [omKey, setOmKey] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+function sourceStatusText(source: string, on: boolean, data: PayloadWire): string {
+  if (source === "purpleair" && !data.keys.purpleair) return "Needs a key";
+  if (!data.location) return "Waiting for a location";
+  if (on) return "Reporting";
+  if (source === "purpleair") return "No sensor picked";
+  return "Not reporting";
+}
 
-  const apply = useCallback((v: KeysView) => {
-    setView(v);
-    setPaKey("");
-    setOmKey("");
-  }, []);
+// One row per source: its live status next to the key it needs (if any), so
+// "why is PurpleAir off?" and "where do I fix it?" are answered in one place.
+function SourcesSection({ data, onChanged }: { data: PayloadWire; onChanged: () => void }) {
+  const [view, setView] = useState<KeysView | null>(null);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
 
   useEffect(() => {
     fetch(`${API}/settings`, { cache: "no-store" })
       .then((r) => r.json())
-      .then(apply)
-      .catch((e) => setErr(e.message));
-  }, [apply]);
+      .then(setView)
+      .catch((e) => setLoadErr(e.message));
+  }, []);
 
-  const post = useCallback(
-    async (payload: any, okMsg: string) => {
-      setBusy(true);
-      setErr(null);
-      setMsg(null);
-      try {
-        const res = await fetch(`${API}/settings`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        if (!res.ok) throw new Error(`save failed (${res.status})`);
-        apply(await res.json());
-        setMsg(okMsg);
-        onSaved();
-      } catch (e: any) {
-        setErr(e.message);
-      } finally {
-        setBusy(false);
-      }
+  const saveKey = useCallback(
+    async (payload: any) => {
+      const res = await fetch(`${API}/settings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || `Save failed (${res.status})`);
+      setView(j);
+      onChanged();
     },
-    [apply, onSaved],
+    [onChanged],
   );
 
-  const saveAll = () => {
-    const payload: any = {};
-    if (paKey.trim()) payload.purpleair = { read_key: paKey.trim() };
-    if (omKey.trim()) payload.open_meteo = { api_key: omKey.trim() };
-    if (!payload.purpleair && !payload.open_meteo) {
-      setMsg("Nothing to save — the fields were blank.");
-      return;
+  const keyFor = (s: string) => {
+    if (!view) return null;
+    if (s === "purpleair") {
+      return (
+        <KeyField
+          inputId={PA_KEY_INPUT}
+          label="READ key"
+          view={view.purpleair.read_key}
+          onSave={(v) => saveKey({ purpleair: { read_key: v } })}
+          help={<>Free from <a href="https://develop.purpleair.com" target="_blank" rel="noreferrer">develop.purpleair.com</a>. After saving, pick a sensor on each location.</>}
+        />
+      );
     }
-    post(payload, "Saved.");
+    if (s === "open_meteo") {
+      return (
+        <KeyField
+          inputId="open-meteo-api-key"
+          label="API key"
+          optional
+          view={view.open_meteo?.api_key ?? NO_KEY}
+          onSave={(v) => saveKey({ open_meteo: { api_key: v } })}
+          help={<>Only needed for a <a href="https://open-meteo.com/en/pricing" target="_blank" rel="noreferrer">commercial plan</a>.</>}
+        />
+      );
+    }
+    return <p className="src-note">No key needed.</p>;
   };
 
-  if (err && !view) return <div className="panel" style={{ marginTop: 16 }}>Couldn’t load keys: {err}</div>;
-  if (!view) return <div className="panel" style={{ marginTop: 16 }}>Loading keys…</div>;
+  return (
+    <>
+      {data.location && <p className="sheet-lead">Status for {data.location.name}.</p>}
+      <ul className="src-list">
+        {data.sources.map((s) => {
+          const on = !!data.sourceStatus[s];
+          return (
+            <li key={s} className="src-item">
+              <div className="src-head">
+                <span className="dot" style={{ background: data.sourceColors[s] }} aria-hidden="true" />
+                <span className="src-name">{data.sourceLabels[s] || s}</span>
+                <span className={`src-status${on ? " on" : ""}`}>{sourceStatusText(s, on, data)}</span>
+              </div>
+              {keyFor(s)}
+            </li>
+          );
+        })}
+      </ul>
+      {!view && !loadErr && <p className="src-note">Loading keys…</p>}
+      {loadErr && <p className="err-msg" role="alert">Couldn’t load keys: {loadErr}</p>}
+      <p className="sheet-lead" style={{ marginTop: 12 }}>
+        Keys are stored in this computer’s local vault and are never shown in full.
+      </p>
+    </>
+  );
+}
+
+function keyOrigin(k: KeyView): string {
+  if (k.origin === "env") return "set in .env.local";
+  if (k.origin === "vault") return "saved in the local vault";
+  return "saved";
+}
+
+// A saved key reads as a sentence with Replace / Remove, not as a password
+// box whose placeholder explains it's already set. Only an empty or
+// replacing key shows an input.
+function KeyField({
+  inputId: id,
+  label,
+  view,
+  optional,
+  help,
+  onSave,
+}: {
+  inputId: string;
+  label: string;
+  view: KeyView;
+  optional?: boolean;
+  help: ReactNode;
+  onSave: (value: string) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  // An optional key the user never set stays a one-line link until asked for.
+  const showInput = editing || (!view.set && !optional);
+  const removable = view.origin === "vault" || view.origin === "saved";
+
+  const run = async (v: string, done: string) => {
+    setBusy(true);
+    setErr(null);
+    setMsg(null);
+    try {
+      await onSave(v);
+      setValue("");
+      setEditing(false);
+      setMsg(done);
+    } catch (e: any) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
-    <div className="panel settings">
-      <div className="settings-head">
-        <strong>Account keys</strong>
-        <button className="btn secondary" onClick={onClose}>Close</button>
-      </div>
-      <p className="note" style={{ marginTop: 4 }}>
-        Account keys, stored in the local vault (Keychain on macOS). PurpleAir
-        sensors are chosen per-location under <em>📍 Locations</em>. Open-Meteo
-        works without a key (free non-commercial API); add one if you have a
-        commercial / customer endpoint key. From chat, use
-        <code>connect_provider</code> — a local browser form, never paste the key into the conversation.
-      </p>
-
-      <div className="settings-grid">
-        <div className="field-group">
-          <div className="fg-title">
-            <span className="dot" style={{ background: "#a78bfa" }} /> PurpleAir
-          </div>
-          <label>READ key</label>
-          <input
-            type="password"
-            autoComplete="off"
-            placeholder={keyHint(view.purpleair.read_key)}
-            value={paKey}
-            onChange={(e) => setPaKey(e.target.value)}
-          />
-          <div className="fg-help">
-            Free READ key at{" "}
-            <a href="https://develop.purpleair.com" target="_blank" rel="noreferrer">develop.purpleair.com</a>.
-            {["vault", "saved"].includes(view.purpleair.read_key.origin) && (
-              <>
-                {" · "}
-                <button className="linkbtn" disabled={busy} onClick={() => post({ purpleair: { read_key: "" } }, "PurpleAir key cleared.")}>clear</button>
-              </>
+    <div className="key-field">
+      {showInput ? (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (value.trim()) run(value.trim(), "Key saved.");
+          }}
+        >
+          <label htmlFor={id}>{label}{optional ? " (optional)" : ""}</label>
+          <div className="key-row">
+            <input
+              id={id}
+              type="password"
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="Paste key"
+              value={value}
+              disabled={busy}
+              onChange={(e) => setValue(e.target.value)}
+            />
+            <button type="submit" className="btn" disabled={busy || !value.trim()}>
+              <Icon name="check" />
+              {busy ? "Saving…" : "Save"}
+            </button>
+            {editing && (
+              <button
+                type="button"
+                className="icon-btn"
+                disabled={busy}
+                onClick={() => { setEditing(false); setValue(""); }}
+                aria-label="Cancel"
+                title="Cancel"
+              >
+                <Icon name="x" />
+              </button>
             )}
           </div>
+        </form>
+      ) : !view.set ? (
+        <div className="key-saved">
+          <span className="muted">No key, using the free API.</span>
+          <span className="key-actions">
+            <button className="linkbtn with-icon" onClick={() => { setEditing(true); setMsg(null); }}>
+              <Icon name="plus" size={14} />
+              Add key
+            </button>
+          </span>
         </div>
-        <div className="field-group">
-          <div className="fg-title">
-            <span className="dot" style={{ background: "#34d399" }} /> Open-Meteo
-          </div>
-          <label>API key (optional)</label>
-          <input
-            type="password"
-            autoComplete="off"
-            placeholder={keyHint(view.open_meteo?.api_key ?? { set: false, masked: "", origin: "none" })}
-            value={omKey}
-            onChange={(e) => setOmKey(e.target.value)}
-          />
-          <div className="fg-help">
-            Commercial key at{" "}
-            <a href="https://open-meteo.com/en/pricing" target="_blank" rel="noreferrer">open-meteo.com/en/pricing</a>.
-            Leave blank to keep using the free API.
-            {["vault", "saved"].includes(view.open_meteo?.api_key?.origin ?? "") && (
-              <>
-                {" · "}
-                <button className="linkbtn" disabled={busy} onClick={() => post({ open_meteo: { api_key: "" } }, "Open-Meteo key cleared.")}>clear</button>
-              </>
+      ) : (
+        <div className="key-saved">
+          <span>
+            {label} <span className="key-mask">{view.masked}</span>, {keyOrigin(view)}
+          </span>
+          <span className="key-actions">
+            <button
+              className="icon-btn"
+              disabled={busy}
+              onClick={() => { setEditing(true); setMsg(null); }}
+              aria-label={`Replace ${label}`}
+              title="Replace"
+            >
+              <Icon name="pencil" />
+            </button>
+            {removable && (
+              <button className="icon-btn" disabled={busy} onClick={() => run("", "Key removed.")} aria-label={`Remove ${label}`} title="Remove">
+                <Icon name="trash" />
+              </button>
             )}
-          </div>
+          </span>
         </div>
-      </div>
-
-      <div className="settings-actions">
-        <button className="btn" onClick={saveAll} disabled={busy}>{busy ? "Saving…" : "Save keys"}</button>
-        {msg && <span className="ok-msg">{msg}</span>}
-        {err && <span className="err-msg">{err}</span>}
-        <span className="note" style={{ marginTop: 0 }}>Then add the sensor to a location under 📍 Locations.</span>
+      )}
+      <p className="src-note">{help}</p>
+      <div aria-live="polite">
+        {msg && <p className="ok-msg">{msg}</p>}
+        {err && <p className="err-msg">{err}</p>}
       </div>
     </div>
   );

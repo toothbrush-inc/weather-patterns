@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Icon } from "./icons";
 
 const API = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api`;
 const SETUP_SKIP_KEY = "weather-setup-skipped";
@@ -185,8 +186,15 @@ export function PlaceSearch({
             </div>
           )}
         </div>
-        <button type="button" className="btn secondary" disabled={disabled || locating} onClick={useMyLocation}>
-          {locating ? "Locating…" : "Use my location"}
+        <button
+          type="button"
+          className={`icon-btn${locating ? " busy" : ""}`}
+          disabled={disabled || locating}
+          onClick={useMyLocation}
+          aria-label={locating ? "Finding your location" : "Use my location"}
+          title="Use my location"
+        >
+          <Icon name="locate" />
         </button>
       </div>
       {geoErr && <div className="err-msg">{geoErr}</div>}
