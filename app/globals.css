@@ -753,8 +753,9 @@ html:has(dialog.sheet[open]) { overflow: hidden; }
 .weather-patterns .weather-temperature { line-height: 1; }
 .weather-patterns .weather-outlook { border: 0; padding: 0; }
 .weather-patterns .weather-range { font-size: 20px; gap: 4px 12px; }
-.weather-patterns .weather-conditions { grid-column: 1 / -1; margin: 4px 0 0; }
-.weather-patterns .mini-stats { grid-column: 1 / -1; margin: 2px 0 0; }
+.weather-patterns .weather-now { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 24px; margin-top: 4px; }
+.weather-patterns .weather-conditions { margin: 0; }
+.weather-patterns .mini-stats { margin: 0; }
 .weather-patterns .today-chart { padding: 0; margin: 8px 0 0; }
 .weather-patterns .weather-forecast-details { margin-top: 0; }
 @media (max-width: 600px) {

@@ -658,8 +658,12 @@ function WeatherSummary({ data, forecast, accuracy, loading, accuracyLoading, ch
           <div className="weather-range"><strong>High {loading || expectedHigh == null ? "—" : `${expectedHigh}°`}</strong><span>Low {loading || expectedLow == null ? "—" : `${expectedLow}°`}</span></div>
           {nowDelta && <div className={`weather-delta ${nowDelta.warmer ? "is-warmer" : "is-cooler"}`} title={`The ${observedClock} reading (${Math.round(temp!)}°) against the forecast for that minute${expectedAtReading != null ? ` (about ${Math.round(expectedAtReading)}°)` : ""}. The high and low above are the forecast for the whole day.`}>{nowDelta.delta}° {nowDelta.warmer ? "warmer" : "cooler"} than forecast at {observedClock}</div>}
         </div>
-        <p className="weather-conditions">{outlook}</p>
-        <CurrentConditions data={data} />
+        {/* Conditions and the humidity/AQI/wind stats share a row; the stats
+            wrap below only when the row is too narrow for both. */}
+        <div className="weather-now">
+          <p className="weather-conditions">{outlook}</p>
+          <CurrentConditions data={data} />
+        </div>
       </div>
       {children}
       <details className="tc-methodology weather-forecast-details">
