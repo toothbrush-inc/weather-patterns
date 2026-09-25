@@ -746,7 +746,11 @@ html:has(dialog.sheet[open]) { overflow: hidden; }
 
 /* One compact overview: current weather and forecast lead directly into the plot. */
 .weather-patterns { margin-top: 12px; }
-.weather-patterns .weather-summary { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px 16px; margin: 0; padding: 0; align-items: center; }
+/* Columns align at the top so "Today's forecast" starts level with the current
+   temperature; centring them pushed the shorter forecast column down by half
+   the height of the "Data updated" line under the temperature. */
+.weather-patterns .weather-summary { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px 16px; margin: 0; padding: 0; align-items: start; }
+.weather-patterns .weather-temperature { line-height: 1; }
 .weather-patterns .weather-outlook { border: 0; padding: 0; }
 .weather-patterns .weather-range { font-size: 20px; gap: 4px 12px; }
 .weather-patterns .weather-conditions { grid-column: 1 / -1; margin: 4px 0 0; }
@@ -761,4 +765,5 @@ html:has(dialog.sheet[open]) { overflow: hidden; }
   .weather-patterns .weather-observed { font-size: 11px; }
 }
 
-.weather-time { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.weather-time, .nowrap { white-space: nowrap; }
+.weather-time { font-variant-numeric: tabular-nums; }

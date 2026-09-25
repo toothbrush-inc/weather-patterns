@@ -641,9 +641,17 @@ function WeatherSummary({ data, forecast, accuracy, loading, accuracyLoading, ch
     <section className="panel weather-patterns" aria-label={`Weather patterns in ${data.location.name}`}>
       <div className="weather-summary" aria-label={`Current weather in ${data.location.name}`}>
         <div className="weather-current">
-          <time className="weather-time" dateTime={new Date(nowMs).toISOString()}>{localTime}</time>
           <div className="weather-temperature">{temp == null ? "—" : Math.round(temp)}<span>°F</span></div>
-          <div className="weather-observed">{observedAt ? `${sensor?.temp_f != null ? "Your sensor" : "Source average"} · ${relTime(observedAt, nowMs)}` : "Waiting for observations"}</div>
+          {/* One line for both clocks: the time now, then how old the reading is. */}
+          <div
+            className="weather-observed"
+            title={observedAt ? (sensor?.temp_f != null ? "From your PurpleAir sensor" : "Average of the sources reporting now") : undefined}
+          >
+            <time className="weather-time" dateTime={new Date(nowMs).toISOString()}>{localTime.toLowerCase()}</time>
+            {observedAt
+              ? <>, last {sensor?.temp_f != null ? "sensor " : ""}reading <span className="nowrap">{relTime(observedAt, nowMs)}</span></>
+              : ", waiting for observations"}
+          </div>
         </div>
         <div className="weather-outlook">
           <div className="weather-forecast-label">Today’s forecast</div>
