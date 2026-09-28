@@ -810,7 +810,9 @@ function CurrentConditions({ data }: { data: Payload }) {
   return (
     <div className="mini-stats">
       {defs.map(([m, label, unit]) => {
-        const { value } = actualObs(data, m);
+        const { value: raw } = actualObs(data, m);
+        // PurpleAir reports humidity to a decimal; whole percent reads cleaner.
+        const value = raw !== null && m === "humidity" ? Math.round(raw) : raw;
         return (
           <div className="mini-stat" key={m}>
             <span className="mini-lbl">{label}</span>

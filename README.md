@@ -3,6 +3,14 @@
 **Personalized weather service. Get accurate, hyperlocal forecasts for your
 location.**
 
+![Weather Patterns dashboard for Boulder, Colorado: current sensor reading, a rain alert, and a three-day temperature chart with the PurpleAir sensor's observed temperatures, the forecast adjusted to that sensor, the unadjusted source forecast, and warmer/cooler-than-expected shading](docs/images/hero.png)
+
+<sub>Boulder, Colorado: NWS and Open-Meteo data with an illustrative PurpleAir
+sensor. The solid line is what the sensor observed, the dashed line the forecast
+adjusted to the sensor's past readings (`Forecast*`), and the dotted line the raw
+source forecast. Blue shading marks the hours today ran cooler than forecast, red
+the hours it ran warmer.</sub>
+
 A more accurate forecast for the exact place you stand. Weather Patterns pulls
 current conditions and daily forecasts from the National Weather Service,
 Open-Meteo, and a PurpleAir sensor near you, logs every reading to a local
