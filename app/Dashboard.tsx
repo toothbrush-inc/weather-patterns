@@ -160,6 +160,8 @@ type ForecastPayload = {
   tomorrow?: { date: string | null; forecasts: Record<string, Forecast>; consensus: Consensus } | null;
   hourly?: { date: string; hours: HourlyRow[] } | null;
   hourlyTomorrow?: { date: string; hours: HourlyRow[] } | null;
+  // Daily-only forecasts for the days after tomorrow (up to 10 days out).
+  outlook?: { date: string; forecasts: Record<string, Forecast>; consensus: Consensus; sources: number }[];
   alerts?: EventAlert[];
 };
 
@@ -584,13 +586,14 @@ function heroAccuracy(data: Payload, accuracy: AccuracyPayload | null, accuracyL
 }
 // Today's and tomorrow's bias-adjusted high/low, computed once for the hero's
 // High/Low, the chart's day cards and the forecast curve so none of them can show a
-// different number. `forecast` is the pure corrected forecast the curve is fitted to;
+// different number. The outlook days past tomorrow get the same correction. `forecast` is the pure corrected forecast the curve is fitted to;
 // `today` additionally cannot sit below a high (or above a low) already observed.
 function dailyRanges(forecast: ForecastPayload | null, localAccuracy: AccuracyPayload | null) {
   const tomorrow = adjustedDailyRange(forecast?.tomorrow?.consensus ?? null, localAccuracy);
   return {
     today: adjustedDailyRange(forecast?.consensus, localAccuracy, localAccuracy ? localSoFar(localAccuracy) : null),
     tomorrow,
+    outlook: (forecast?.outlook ?? []).map(d => ({ date: d.date, sources: d.sources, range: adjustedDailyRange(d.consensus, localAccuracy) })),
     forecast: { today: adjustedDailyRange(forecast?.consensus, localAccuracy), tomorrow },
   };
 }

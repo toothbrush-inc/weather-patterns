@@ -3,13 +3,15 @@ import { NextResponse } from "next/server";
 import { resolveLocation } from "@/lib/config.mjs";
 import { withScope } from "@/lib/request-scope";
 // @ts-ignore
-import { collectForecasts, forecastsForDate, forecastSourcesFor, forecastConsensus, hourlyForDate } from "@/lib/forecast.mjs";
+import { collectForecasts, forecastsForDate, forecastSourcesFor, forecastConsensus, hourlyForDate, forecastOutlook } from "@/lib/forecast.mjs";
 // @ts-ignore
 import { historyStats, buildAlerts, fetchAqiForecastToday, fetchNwsAdvisories } from "@/lib/alerts.mjs";
 // @ts-ignore
 import { SOURCE_LABELS, SOURCE_COLORS } from "@/lib/constants.mjs";
 
 export const runtime = "nodejs";
+// Days past tomorrow in the outlook — today + tomorrow + 9 = 10 days ahead.
+const OUTLOOK_DAYS = 9;
 export const dynamic = "force-dynamic";
 
 // Live daily forecast (high/low) for one location, compared across the
@@ -64,6 +66,8 @@ export async function GET(req: Request) {
       : null,
     hourly,
     hourlyTomorrow: tomorrow ? hourlyForDate(results, tomorrow) : null,
+    // Daily high/low for the days after tomorrow, out to 10 days from today.
+    outlook: forecastOutlook(results, tomorrow, OUTLOOK_DAYS),
     alerts,
   });
   });

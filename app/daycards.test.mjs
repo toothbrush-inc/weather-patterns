@@ -34,4 +34,21 @@ describe("day cards reflect the bias-adjusted forecast", () => {
     // And it is not the unshifted source forecast.
     expect(want.high).not.toBe(scenario.forecast.tomorrow.consensus.high_f);
   });
+  it("outlook cards follow tomorrow, out to 10 days ahead, each shifted by the biases", () => {
+    const scenario = buildScenario("cooler");
+    const html = renderToStaticMarkup(React.createElement(Dashboard, { scenario }));
+    const outlook = scenario.forecast.outlook;
+    expect(outlook).toHaveLength(9);
+    const titles = [...html.matchAll(/tc-day-title">([^<]+)<span>/g)].map((m) => m[1]);
+    expect(titles.slice(0, 3)).toEqual(["Yesterday", "Today", "Tomorrow"]);
+    expect(titles).toHaveLength(12);
+    for (const day of outlook) {
+      const label = new Date(`${day.date}T12:00:00Z`).toLocaleDateString(undefined, { weekday: "short", timeZone: "UTC" });
+      const want = adjustedDailyRange(day.consensus, scenario.accuracy);
+      expect(html).toContain(`tc-day-title">${label}<span>`);
+      expect(html).toContain(`${want.low}° – ${want.high}°`);
+    }
+    // Past weather.gov's week only Open-Meteo forecasts, and the card says so.
+    expect(html.match(/tc-day-coverage">1 source</g)).toHaveLength(outlook.filter((d) => d.sources === 1).length);
+  });
 });
