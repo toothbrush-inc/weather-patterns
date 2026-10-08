@@ -38,6 +38,15 @@ commit b2f52cc) — weather-app flow, most useful info first:
    it lives only in the hero's headed-warmer/on-track/peak-footer copy. Scenario
    `slow-morning` (hour 8, `todayHigh: 72` under an 84° forecast) shows it.
    CSS `.event-alert[data-sev]`, `.today-chart`.
+   **10-day outlook in the day-card row** (2026-10-08): `.tc-days` is a horizontal
+   scroll-snap row — Yesterday/Today/Tomorrow fill the width, then one card per day
+   out to today+10 (weekday label, bias-adjusted range via `dailyRanges().outlook`,
+   "High vs today"). Data: `/api/forecast` `outlook` = `forecastOutlook(results,
+   tomorrow, 9)` (`lib/forecast-core.mjs`; Open-Meteo now `forecast_days=11`, NWS
+   stops ~day 6 so later cards say "1 source"). Daily-only — the chart stays three
+   days. Pointer devices get ‹ › buttons (`.tc-scroll-btn`); touch (`hover: none`)
+   gets a peek of the next card instead. An edge mask-fade was tried and dropped: with
+   snapped flush cards it dimmed the first card's digits.
    **Observed line reaches the marker** (2026-09-15): `withLatestReading` +
    `interpolateHour` (`lib/temperature-timeline.ts`) insert today's latest observation
    as one extra row at its TRUE fractional local hour (`row.latest = true`, forecasts

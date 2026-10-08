@@ -665,7 +665,23 @@ html:has(dialog.sheet[open]) { overflow: hidden; }
 
 /* Primary three-day comparison */
 .today-chart { padding: 22px; margin-top: 16px; }
-.tc-days { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+.tc-days-scroller { position: relative; margin-bottom: 14px; }
+/* Three cards fill the row (yesterday/today/tomorrow); the outlook days sit past
+   the right edge and scroll in sideways, a card at a time. */
+.tc-days { --tc-gap: 10px; display: grid; grid-auto-flow: column; grid-auto-columns: calc((100% - 2 * var(--tc-gap)) / 3); gap: var(--tc-gap); overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; border-radius: 8px; }
+.tc-days::-webkit-scrollbar { display: none; }
+.tc-days:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tc-days > .tc-day { scroll-snap-align: start; }
+.tc-scroll-btn { position: absolute; top: 50%; transform: translateY(-50%); width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line); background: #1f2933; color: #e6edf3; font-size: 18px; line-height: 1; cursor: pointer; display: grid; place-items: center; box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+.tc-scroll-btn.back { left: -18px; }
+.tc-scroll-btn.forward { right: -18px; }
+.tc-scroll-btn:hover { background: #2a3641; }
+.tc-scroll-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Touch screens swipe the row instead; a sliver of the next card is the cue. */
+@media (hover: none) {
+  .tc-scroll-btn { display: none; }
+  .tc-days-scroller[data-forward] .tc-days, .tc-days-scroller[data-back] .tc-days { grid-auto-columns: calc((100% - 2 * var(--tc-gap)) / 3.25); }
+}
 .tc-day { display: flex; flex-direction: column; gap: 7px; text-align: left; padding: 14px; background: #151d26; color: #e6edf3; border: 1px solid var(--line); border-top: 3px solid; border-radius: 8px; font: inherit; }
 .tc-day-title { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; }
 .tc-day-title span, .tc-day > span:not(:first-child) { font-size: 11px; color: #94a3b8; font-weight: 400; }
@@ -673,7 +689,7 @@ html:has(dialog.sheet[open]) { overflow: hidden; }
 .today-chart .tc-foot { margin-top: 14px; line-height: 1.6; }
 @media (max-width: 600px) {
   .today-chart { padding: 14px 8px; }
-  .tc-days { gap: 5px; }
+  .tc-days { --tc-gap: 5px; }
   .tc-day { padding: 9px 6px; }
   .tc-day-title { flex-direction: column; gap: 4px; font-size: 12px; }
   .tc-day > strong { font-size: 18px; }
@@ -702,7 +718,7 @@ html:has(dialog.sheet[open]) { overflow: hidden; }
 .tc-band-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .tc-band-legend small { flex-basis: 100%; font-size: 11px; }
 @media (max-width: 600px) {
-  .tc-days { grid-template-columns: 1fr; gap: 8px; }
+  .tc-days { --tc-gap: 8px; }
   .tc-day { padding: 12px; gap: 5px; }
   .tc-day-title { flex-direction: row; font-size: 14px; }
   .tc-day > strong { font-size: 23px; }
@@ -727,7 +743,8 @@ html:has(dialog.sheet[open]) { overflow: hidden; }
   .weather-outlook p { font-size: 13px; margin: 3px 0; }
   .weather-calibration { font-size: 11px; }
   .today-chart { margin-top: 12px; }
-  .tc-days { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; margin-bottom: 8px; }
+  .tc-days { --tc-gap: 5px; }
+  .tc-days-scroller { margin-bottom: 8px; }
   .tc-day { padding: 8px 5px; gap: 4px; min-width: 0; }
   .tc-day-title { flex-direction: column; gap: 1px; font-size: 12px; }
   .tc-day > strong { font-size: clamp(13px, 4vw, 18px); letter-spacing: -.4px; white-space: nowrap; }

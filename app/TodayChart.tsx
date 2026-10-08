@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ComposedChart, Area, Line, XAxis, YAxis, Tooltip, ReferenceLine, ReferenceArea, CartesianGrid, ResponsiveContainer } from "recharts";
 import { temperatureTimeline, timelineX, withLatestReading, interpolateHour, type LatestReading, type TimelinePoint } from "../lib/temperature-timeline";
 import { fitCurve, adjustedValue, adjustmentSummary, forecastCurve, consensusBiasFor, highComparison, temperatureTrend, TREND_HOURS, type AdjustmentAccuracy, type DailyRange } from "../lib/forecast-adjustment";
@@ -11,6 +11,7 @@ import { useWeatherNow } from "./WeatherClock";
 
 type Hour = { hour: number; temp_f: number | null; precip_prob: number | null; wind_mph: number | null };
 type Day = { date: string; hours: Hour[] } | null;
+type OutlookDay = { date: string; sources: number; range: DailyRange | null };
 type Props = {
   history: { ts: string; status: string; source: string; temp_f: number | null }[];
   accuracy?: (AdjustmentAccuracy & { todayLocal: string; diurnal: { source: string } | null }) | null;
@@ -18,12 +19,14 @@ type Props = {
   hourly?: Day; tomorrow?: Day; date?: string | null; utcOffsetSeconds?: number | null; loading?: boolean;
   // Bias-adjusted daily high/low for the day cards (see Dashboard's dailyRanges);
   // a card falls back to its hourly values where a daily forecast is missing.
-  ranges?: { today: DailyRange | null; tomorrow: DailyRange | null } | null;
+  // `outlook` carries the days after tomorrow; their cards sit past Tomorrow's in
+  // the same row, reached by scrolling it sideways.
+  ranges?: { today: DailyRange | null; tomorrow: DailyRange | null; outlook?: OutlookDay[] } | null;
   // The corrected forecast high/low the curves are fitted to (today's NOT bounded by
   // observations, unlike the card's), so the graph's peak is the hero's High.
   forecastRanges?: { today: DailyRange | null; tomorrow: DailyRange | null } | null;
 };
-const colors = { yesterday: "#94a3b8", actual: "#60d5f7", forecast: "#60d5f7", tomorrow: "#fbbf24" };
+const colors = { yesterday: "#94a3b8", actual: "#60d5f7", forecast: "#60d5f7", tomorrow: "#fbbf24", outlook: "#475569" };
 const hourLabel = (h: number) => `${h % 12 || 12}${h >= 12 ? "pm" : "am"}`;
 const clockLabel = (hour: number) => { const h = Math.floor(hour), m = Math.round((hour - h) * 60); return `${h % 12 || 12}:${String(m).padStart(2, "0")}${h >= 12 ? "pm" : "am"}`; };
 const temperature = (v: number | null) => v == null ? "—" : `${Math.round(v * 10) / 10}°F`;
@@ -32,6 +35,8 @@ const temperature = (v: number | null) => v == null ? "—" : `${Math.round(v * 
 export default function TodayChart({ history, hourly, tomorrow, date, utcOffsetSeconds, loading, accuracy, currentTemp, ranges, forecastRanges }: Props) {
   const now = useWeatherNow();
   const [sourceOverride, setSourceOverride] = useState<boolean | null>(null);
+  const cardRow = useRef<HTMLDivElement>(null);
+  const [canScroll, setCanScroll] = useState({ back: false, forward: false });
   const offset = (utcOffsetSeconds ?? -new Date(now).getTimezoneOffset() * 60) * 1000;
   const localNow = new Date(now + offset);
   const today = date ?? localNow.toISOString().slice(0, 10);
@@ -99,7 +104,23 @@ export default function TodayChart({ history, hourly, tomorrow, date, utcOffsetS
     { key: "yesterday" as const, label: "Yesterday", date: shiftDate(-1), values: yesterday, range: null as DailyRange | null },
     { key: "today" as const, label: "Today", date: today, values: actual.map((v, h) => v ?? todayForecast[h]), range: ranges?.today ?? null },
     { key: "tomorrow" as const, label: "Tomorrow", date: shiftDate(1), values: tomorrowForecast, range: ranges?.tomorrow ?? null },
+    // Daily-only forecasts past tomorrow: no hourly curve, so no hourly fallback either.
+    ...(ranges?.outlook ?? []).map(d => ({ key: "outlook" as const, label: new Date(`${d.date}T12:00:00Z`).toLocaleDateString(undefined, { weekday: "short", timeZone: "UTC" }), date: d.date, values: [] as (number | null)[], range: d.range, sources: d.sources })),
   ];
+  // The row opens on yesterday/today/tomorrow; arrows (pointer devices) mark the
+  // edge that has more cards behind it.
+  const outlookCount = ranges?.outlook?.length ?? 0;
+  const updateScroll = () => {
+    const el = cardRow.current;
+    if (!el) return;
+    setCanScroll({ back: el.scrollLeft > 4, forward: el.scrollLeft + el.clientWidth < el.scrollWidth - 4 });
+  };
+  useEffect(updateScroll, [outlookCount]);
+  useEffect(() => {
+    window.addEventListener("resize", updateScroll);
+    return () => window.removeEventListener("resize", updateScroll);
+  }, []);
+  const scrollCards = (direction: 1 | -1) => cardRow.current?.scrollBy({ left: direction * cardRow.current.clientWidth, behavior: "smooth" });
   const maximum = (values: (number | null)[]) => {
     const available = values.filter((v): v is number => v != null);
     return available.length ? Math.max(...available) : null;
@@ -130,10 +151,12 @@ export default function TodayChart({ history, hourly, tomorrow, date, utcOffsetS
   const trendDetail = trend && (Math.abs(trend.delta) < 2
     ? `Within 2° through ${hourLabel(trend.hour)}`
     : `${Math.abs(trend.delta)}° ${trend.delta > 0 ? "warmer" : "cooler"} by ${hourLabel(trend.hour)}`);
-  const deltas = [highs[0] != null && highs[1] != null ? Math.round(highs[0] - highs[1]) : null, highs[0] != null && highs[1] != null ? Math.round(highs[1] - highs[0]) : null, highs[2] != null && highs[1] != null ? Math.round(highs[2] - highs[1]) : null];
+  // Today's card compares with yesterday; every other card with today.
+  const versus = (index: number) => index === 1 ? 0 : 1;
+  const deltas = highs.map((high, index) => high != null && highs[versus(index)] != null ? Math.round(high - highs[versus(index)]!) : null);
   const direction = (delta: number | null) => delta == null ? "unknown" : delta > 0 ? "warm" : delta < 0 ? "cool" : "steady";
   const arrow = (delta: number | null) => delta == null ? "—" : delta > 0 ? "↗" : delta < 0 ? "↘" : "→";
-  const summaries = [highComparison(highs[0], highs[1]), highComparison(highs[1], highs[0]), highComparison(highs[2], highs[1])];
+  const summaries = highs.map((high, index) => highComparison(high, highs[versus(index)]));
   const hasAdjustment = Boolean(highSummary?.shift || lowSummary?.shift);
   const scoredDays = highBias?.n ?? lowBias?.n ?? 0;
   const endNote = (s: ReturnType<typeof adjustmentSummary>) => s?.shift ? `${s.shift} than the source consensus` : "as the sources forecast it";
@@ -173,18 +196,23 @@ export default function TodayChart({ history, hourly, tomorrow, date, utcOffsetS
         {isToday && <ReferenceLine x={timelineX(1, latest ? latest.hour : localNow.getUTCHours() + localNow.getUTCMinutes() / 60)} stroke="#94a3b8" strokeDasharray="3 4" label={{ value: latest ? `${Math.round(latest.temp)}° · ${clockLabel(latest.hour)}` : "Now", fill: "#94a3b8", fontSize: 11, position: "insideTopRight" }} />}
       </ComposedChart>
     </ResponsiveContainer> : <div className="empty">{loading ? "Loading hourly forecasts…" : "Hourly temperatures are unavailable. The comparison will appear when observations or forecasts arrive."}</div>}
-    <div className="tc-days">{daily.map((day, index) => {
+    <div className="tc-days-scroller" data-back={canScroll.back || undefined} data-forward={canScroll.forward || undefined}>
+    <div className="tc-days" ref={cardRow} onScroll={updateScroll} tabIndex={outlookCount ? 0 : undefined} role={outlookCount ? "region" : undefined} aria-label={outlookCount ? `Daily forecast, yesterday through ${outlookCount + 1} days ahead` : undefined}>{daily.map((day, index) => {
       const values = day.values.filter((v): v is number => v != null);
       const lo = cardLow(day), hi = cardHigh(day);
-      return <div key={day.key} className="tc-day" style={{ borderTopColor: day.key === "today" ? colors.actual : colors[day.key] }}>
+      const outlook = day.key === "outlook";
+      return <div key={outlook ? day.date : day.key} className="tc-day" style={{ borderTopColor: day.key === "today" ? colors.actual : colors[day.key] }}>
         <span className="tc-day-title">{day.label}<span>{new Date(`${day.date}T12:00:00Z`).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" })}</span></span>
         <strong>{lo != null && hi != null ? `${Math.round(lo)}° – ${Math.round(hi)}°` : loading && day.key !== "yesterday" ? "Loading…" : "No data"}</strong>
         <b className="tc-day-summary" data-trend={direction(deltas[index])}><span className="tc-trend-arrow" aria-hidden="true">{arrow(deltas[index])}</span>{summaries[index]}</b>
         <span>High vs {index === 1 ? "yesterday" : "today"}</span>
-
-        {values.length < 24 && <span className="tc-day-coverage">{values.length}/24 hrs</span>}
+        {outlook ? "sources" in day && day.sources === 1 && <span className="tc-day-coverage">1 source</span>
+          : values.length < 24 && <span className="tc-day-coverage">{values.length}/24 hrs</span>}
       </div>;
     })}</div>
+    {canScroll.back && <button type="button" className="tc-scroll-btn back" aria-label="Earlier days" onClick={() => scrollCards(-1)}>‹</button>}
+    {canScroll.forward && <button type="button" className="tc-scroll-btn forward" aria-label="Later days" onClick={() => scrollCards(1)}>›</button>}
+    </div>
     {trend && <p className="tc-near-trend"><span aria-hidden="true">{arrow(Math.abs(trend.delta) < 2 ? 0 : trend.delta)}</span> {trend.phrase} · {trendDetail}</p>}
     <div className="tc-timeline-legend">
       <span><i className="tc-mark" style={{ borderTopColor: colors.actual }} />Observed</span>
@@ -199,6 +227,6 @@ export default function TodayChart({ history, hourly, tomorrow, date, utcOffsetS
 
     <details className="tc-methodology"><summary>How to read this comparison</summary>{hasAdjustment && <p className="tc-star-note">* Adjusted for this location: the forecast curve is fitted so its daily high reads {endNote(highSummary)} and its low {endNote(lowSummary)} — the mean errors against your observations over {scoredDays} scored {scoredDays === 1 ? "day" : "days"}.</p>}<p className="tc-foot">{localAccuracy?.hasPurpleair ? "Observations use your local sensor. " : "Observations average reporting sources. "}Yesterday’s forecast high and low (in the tooltip) are reconstructed from logged daily high/low and errors on earlier days; no hourly forecast was saved. {yHigh == null || yLow == null ? "Yesterday’s adjustment is unavailable. " : ""}{hasAdjustment ? "Forecast* carries those corrections across the whole day, so its high and low are the forecast high and low shown above; today’s hours still to come are not bent toward what has been observed so far, so the shading keeps showing where the day departs from the forecast. "
       : scoredDays ? `No correction is needed here: over ${scoredDays} scored ${scoredDays === 1 ? "day" : "days"} the source consensus has averaged within 2°F of your observations at both ends of the day, so the forecast is shown unmodified. `
-      : "No adjustment yet — the forecast shown is the raw source consensus, and it gains a * once enough days are scored. "}Today’s and tomorrow’s cards show the daily forecast high and low, each adjusted by its own error against your observations — the high by how highs have missed here, the low by how lows have — with today’s bounded by what has already been recorded; yesterday’s card is what was observed. Where a daily forecast is missing, a card falls back to its hourly values. Daily summaries compare those highs. Today’s trend compares the forecast for the current hour with {TREND_HOURS} hours later — forecast against forecast, so a source running warm or cool cannot masquerade as a trend — continuing into tomorrow after 9pm. Solid lines are observations; dashed lines are forecasts. The grid lines fall on the edges of the plain-language temperature bands named down the right side (Mild is 70–79°, Warm 80–89°, and so on); the band holding the current reading is brightened and shaded across today. Outer-day points average available values in each 3-hour interval; empty intervals remain gaps.</p></details>
+      : "No adjustment yet — the forecast shown is the raw source consensus, and it gains a * once enough days are scored. "}Today’s and tomorrow’s cards — and the cards past tomorrow, out to 10 days, reached by scrolling the row sideways — show the daily forecast high and low, each adjusted by its own error against your observations — the high by how highs have missed here, the low by how lows have — with today’s bounded by what has already been recorded; yesterday’s card is what was observed. Where a daily forecast is missing, a card falls back to its hourly values. Weather.gov forecasts about a week ahead; days beyond that come from Open-Meteo alone and are marked “1 source”. Daily summaries compare those highs. Today’s trend compares the forecast for the current hour with {TREND_HOURS} hours later — forecast against forecast, so a source running warm or cool cannot masquerade as a trend — continuing into tomorrow after 9pm. Solid lines are observations; dashed lines are forecasts. The grid lines fall on the edges of the plain-language temperature bands named down the right side (Mild is 70–79°, Warm 80–89°, and so on); the band holding the current reading is brightened and shaded across today. Outer-day points average available values in each 3-hour interval; empty intervals remain gaps.</p></details>
   </section>;
 }
